@@ -1,0 +1,182 @@
+Good version
+RXBF: Receive Buffer Full Status bit   I2C1RXIF: I2C1 Receive Interrupt Flag bit
+I2C1PIRbits.PCIF PCIF is stop interrupt
+I2CxTXIF and I2CxRXIF are read-only bits. To clear the interrupt condition, the CLRBF bit in I2CxSTAT1
+register must be set.
+I2C1STAT1bits.CLRBF clears both RX and TX
+
+5. Module: I2 C
+5.1 I 2
+C Receive Buffer
+When receiving data into the receive buffer
+I2CxRXB, the byte is transferred into the buffer
+on the 9th rising clock edge rather than the
+expected 8th falling edge. This causes both the
+Receive Buffer Full (RXBF) status bit and the
+Receive Buffer Interrupt Flag (I2CxRXIF) to also
+be set on the 9th rising clock edge. The Data
+Write Interrupt (WRIF) and Address Interrupt
+Flag (ADRIF) will still be set on the 8th falling
+clock edge. If user software is configured to
+interrupt (or poll) when either the WRIF bit or the
+ADRIF bit is set, hardware will read an empty
+receive buffer, set the Receive Read Error
+(RXRE) status flag, and a NACK will be issued.
+Work around
+Do not use WRIF or ADRIF to determine when
+the receive buffer has received data. Instead,
+interrupt/poll using the I2CxRXIF interrupt bit or
+poll the RXBF bit. These bits are correctly set
+once the address/data byte has been
+transferred into I2CxRXB.
+
+
+void I2C1_ISR ( void )
+{
+    uint8_t  I2C1_data = 0x55;
+    if ((I2C1STAT1bits.RXBF)||(PIR2bits.I2C1RXIF))
+    {
+		PIR2bits.I2C1RXIF=0; // not a valid action-read only?
+        I2C1_data = I2C1RXB;  // capture I2C1RXB asap?
+    }
+    if(1 == I2C1STAT0bits.R)  // I2C1_SlaveIsRead()
+    {
+        if (I2C1PIRbits.PCIF) // I2C1_SlaveIsStop()
+        {
+            I2C1PIRbits.PCIF=0; // no equivalent operation?
+			PIR3bits.I2C1IF=0; // no equivalent operation?
+            I2C1STAT1bits.CLRBF=1; // clear I2C1TXB and TXBE
+			I2C1CNT=0xFF;
+        }
+        if (I2C1ERRbits.NACKIF)
+        {
+            I2C1ERRbits.NACKIF=0;
+			PIR3bits.I2C1EIF=0;
+            I2C1STAT1bits.CLRBF=1; // clear I2C1TXB and TXBE
+            I2C1_StatusCallback(I2C1_SLAVE_READ_COMPLETED);
+        }
+        else if(PIR3bits.I2C1TXIF)
+        {
+			PIR3bits.I2C1TXIF=0;
+            // callback routine should write data into I2C1TXB
+            I2C1_StatusCallback(I2C1_SLAVE_READ_REQUEST);
+        }
+        if (I2C1PIRbits.ADRIF)
+        {
+            I2C1PIRbits.ADRIF=0;
+			PIR3bits.I2C1IF=0;
+        }
+    }
+    else if((I2C1PIRbits.ADRIF))
+    {
+        I2C1PIRbits.ADRIF=0;
+		PIR3bits.I2C1IF=0;
+        // callback routine should prepare to receive data from the master
+        I2C1_StatusCallback(I2C1_SLAVE_WRITE_REQUEST);
+    }
+    else
+    {
+        I2C1_slaveWriteData   = I2C1_data;
+		if (I2C1PIRbits.PCIF)
+        {
+            I2C1PIR=0;
+			PIR3bits.I2C1IF=0;
+            I2C1STAT1bits.CLRBF=1;
+			I2C1CNT=0xFF;
+        }
+        // callback routine should process I2C1_slaveWriteData from the master
+        I2C1_StatusCallback(I2C1_SLAVE_WRITE_COMPLETED);
+    }
+    I2C1CON0bits.CSTR=0; 
+} 
+
+
+
+Bad version
+static inline void I2C1_SlaveEnableIrq()
+{
+    PIE3bits.I2C1IE    = 1; //I2C1 Interrupt Enable bit             read only  all bits in the UxUIR register must be cleared
+    PIE3bits.I2C1EIE   = 1; //I2C1 Error Interrupt Enable bit       read only   all bits in the UxERRIR register must be cleared
+    PIE2bits.I2C1RXIE  = 1; //I2C1 Receive Interrupt Enable bit     read only flag use  CLRBF bit in I2CxSTAT1
+    PIE3bits.I2C1TXIE  = 1; //I2C1 Transmit Interrupt Enable bit    read only flag use  CLRBF bit in I2CxSTAT1
+    I2C1PIEbits.PCIE = 1; //Stop Condition Interrupt Enable
+    I2C1PIEbits.ADRIE = 1; //Address Interrupt and Hold Enable bit
+    I2C1ERRbits.NACKIE = 1; //NACKIE: NACK Detect Interrupt Enable bit, clearing condition not described
+
+}
+
+
+
+
+
+
+
+static void I2C1_Isr() 
+{ 
+    if(I2C1_SlaveIsStop())                 // I2C1PIRbits.PCIF
+    {
+        I2C1_SlaveClearIrq();              // I2C1PIR = 0x00
+        I2C1_SlaveClearBuff();             // I2C1STAT1bits.CLRBF = 1
+        I2C1_SlaveSetCounter(0xFF);        // I2C1CNT = counter
+        I2C1_SlaveReleaseClock();          // I2C1CON0bits.CSTR = 0
+        i2c1SlaveState = I2C1_IDLE;
+    }
+    else
+    {
+        I2C1_SlaveClearIrq();              // I2C1PIR = 0x00
+
+        if(I2C1_SlaveIsAddr())             // !(I2C1STAT0bits.D)
+        {
+            if(I2C1_SlaveIsRead())         // I2C1STAT0bits.R
+            {
+                i2c1SlaveState = I2C1_ADDR_TX;
+            }
+            else
+            {
+                i2c1SlaveState = I2C1_ADDR_RX;
+            }
+        }
+        else
+        {
+            if(I2C1_SlaveIsRead())         // I2C1STAT0bits.R
+            {
+                i2c1SlaveState = I2C1_DATA_TX;
+            }
+            else
+            {
+                i2c1SlaveState = I2C1_DATA_RX;
+            }
+        }
+
+        switch(i2c1SlaveState)
+        {
+            case I2C1_ADDR_TX:
+                I2C1_SlaveAddrCallBack();
+                I2C1_SlaveClearBuff();     // I2C1STAT1bits.CLRBF = 1
+                if(I2C1_SlaveIsTxBufEmpty()) // I2C1STAT1bits.TXBE
+                {
+                    I2C1_SlaveWrCallBack();
+                }
+                break;
+            case I2C1_ADDR_RX:
+                I2C1_SlaveAddrCallBack();
+                I2C1_SlaveClearBuff();     // I2C1STAT1bits.CLRBF = 1
+                break;
+            case I2C1_DATA_TX:
+                if(I2C1_SlaveIsTxBufEmpty()) // I2C1STAT1bits.TXBE
+                {
+                    I2C1_SlaveWrCallBack();
+                }
+                break;
+            case I2C1_DATA_RX:
+                if(I2C1_SlaveIsRxBufFull())  // I2C1STAT1bits.RXBF
+                {
+                    I2C1_SlaveRdCallBack();
+                }
+                break;
+            default:
+                break;
+        }
+        I2C1_SlaveReleaseClock();          // I2C1CON0bits.CSTR = 0
+    }
+}
