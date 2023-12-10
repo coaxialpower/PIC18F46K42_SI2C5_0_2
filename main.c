@@ -65,15 +65,15 @@ void SlaveRdInterruptHandler(void)
 
 void SlaveWrInterruptHandler(void)
 {
-    if (addressflag)
-    {
-        addressflag=false;
-        I2C1_Write(storage[address]);
-    }
-    else
-    {
-        I2C1_Write(storage[++address]);
-    }
+//    if (addressflag)
+//    {
+//        addressflag=false;
+        I2C1_Write(storage[address++]);
+//    }
+//    else
+//    {
+//        I2C1_Write(storage[++address]);
+//    }
 }
 
 
