@@ -47,10 +47,13 @@ uint8_t address;
 uint8_t storage[256];
 
 static void SlaveAddrInterruptHandler() {
-    I2C1_ReadAddr();
-    addressflag=true;
+    if(I2C1_ReadAddr()==0x4A) 
+    {
+        addressflag=true;
+        LATD++;
+    }
 }
-void SlaveRdInterruptHandler(void)
+static void SlaveRdInterruptHandler(void)
 {
     if (addressflag)
     {
@@ -63,17 +66,17 @@ void SlaveRdInterruptHandler(void)
     }
 }
 
-void SlaveWrInterruptHandler(void)
+static void SlaveWrInterruptHandler(void)
 {
-//    if (addressflag)
-//    {
-//        addressflag=false;
-        I2C1_Write(storage[address++]);
-//    }
-//    else
-//    {
-//        I2C1_Write(storage[++address]);
-//    }
+    if (addressflag)
+    {
+        addressflag=false;
+        I2C1_Write(storage[address]);
+    }
+    else
+    {
+        I2C1_Write(storage[++address]);
+    }
 }
 
 
@@ -104,7 +107,7 @@ void main(void)
         // Add your application code
         LATD<<=1;
         if (!LATD) LATD=0x01;
-        __delay_ms(125);
+        __delay_ms(500);
     }
 }
 /**
