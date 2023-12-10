@@ -370,7 +370,7 @@ static inline void I2C1_SlaveEnableIrq()
     PIE3bits.I2C1TXIE  = 1;
     I2C1PIEbits.PCIE = 1; 
     I2C1PIEbits.ADRIE = 1; 
-    I2C1ERRbits.NACKIE = 1; 
+//    I2C1ERRbits.NACKIE = 1; 
 }
 
 static inline bool I2C1_SlaveIsAddr()
