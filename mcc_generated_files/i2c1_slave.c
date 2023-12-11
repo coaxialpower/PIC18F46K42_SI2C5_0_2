@@ -189,6 +189,10 @@ static void I2C1_Isr()
         I2C1_SlaveReleaseClock();
         i2c1SlaveState = I2C1_IDLE;
     }
+    else if(I2C1_SlaveIsNack())
+    {
+        I2C1_SlaveClearNack();
+    }
     else
     {
         I2C1_SlaveClearIrq();
@@ -374,7 +378,7 @@ static inline void I2C1_SlaveEnableIrq()
     PIE3bits.I2C1TXIE  = 1;
     I2C1PIEbits.PCIE = 1; 
     I2C1PIEbits.ADRIE = 1; 
-//    I2C1ERRbits.NACKIE = 1; 
+    I2C1ERRbits.NACKIE = 1; 
 }
 
 static inline bool I2C1_SlaveIsAddr()
