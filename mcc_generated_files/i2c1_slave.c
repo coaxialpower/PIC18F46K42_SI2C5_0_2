@@ -119,6 +119,10 @@ void I2C1_Initialize()
     I2C1CON2 = 0x00;
     //CNT 0; 
     I2C1CNT = 0xFF;
+    //Clock PadReg Configuration
+    RC3I2C   = 0x51;
+    //Data PadReg Configuration
+    RC4I2C   = 0x51;
 }
 
 void I2C1_Open() 
